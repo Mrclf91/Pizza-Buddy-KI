@@ -1,11 +1,35 @@
 {
-    "Neapolitanisch 72% Hydration": [
-        {"schritt": "Wasser + Hefe vermischen", "dauer_min": 2, "feedback": false},
-        {"schritt": "Mehl langsam einarbeiten", "dauer_min": 3, "feedback": true},
-        {"schritt": "Salz einarbeiten & Hauptknetung", "dauer_min": 8, "feedback": true},
-        {"schritt": "Stockgare (Teigruhe)", "dauer_min": 120, "feedback": true},
-        {"schritt": "Portionieren & Rundwirken", "dauer_min": 10, "feedback": false},
-        {"schritt": "Stückgare (Teigbällchen)", "dauer_min": 720, "feedback": true},
-        {"schritt": "Formen, Belegen & Backen", "dauer_min": 5, "feedback": false}
+  "Margherita": {
+    "zutaten": ["Tomatensauce", "Mozzarella", "Basilikum"],
+    "schritte": [
+      "Ofen auf 250°C vorheizen",
+      "Teig ausrollen",
+      "Tomatensauce auftragen",
+      "Mozzarella verteilen",
+      "Basilikum auflegen",
+      "15 Minuten backen"
     ]
+  },
+  "Salami": {
+    "zutaten": ["Tomatensauce", "Mozzarella", "Salami"],
+    "schritte": [
+      "Ofen auf 250°C vorheizen",
+      "Teig ausrollen",
+      "Tomatensauce auftragen",
+      "Mozzarella verteilen",
+      "Salami auflegen",
+      "15 Minuten backen"
+    ]
+  },
+  "Funghi": {
+    "zutaten": ["Tomatensauce", "Mozzarella", "Champignons"],
+    "schritte": [
+      "Ofen auf 250°C vorheizen",
+      "Teig ausrollen",
+      "Tomatensauce auftragen",
+      "Mozzarella verteilen",
+      "Champignons auflegen",
+      "15 Minuten backen"
+    ]
+  }
 }
