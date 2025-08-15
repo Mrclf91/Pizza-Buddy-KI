@@ -1,79 +1,48 @@
-# pizza_app_grid.py
 import streamlit as st
-import json, os
+import os
+from datetime import datetime
 from PIL import Image
 import openai
-import base64
-from io import BytesIO
 
-# ------------------ OpenAI Setup ------------------
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+# ------------------ OpenAI API ------------------
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
-# ------------------ Daten laden ------------------
-REZEPTE_DATEI = "rezepte.json"
-
-if os.path.exists(REZEPTE_DATEI):
-    with open(REZEPTE_DATEI, "r") as f:
-        rezepte = json.load(f)
-else:
-    rezepte = {
-        "Basic Margherita": [
-            {"schritt": "Teig kneten", "dauer_min": 10},
-            {"schritt": "Stockgare", "dauer_min": 60},
-            {"schritt": "Backen", "dauer_min": 12},
-        ]
-    }
-    with open(REZEPTE_DATEI, "w") as f:
-        json.dump(rezepte, f, indent=4)
+def generiere_rezept(prompt):
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Du bist ein kreativer Kochassistent."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Fehler bei der Rezeptgenerierung: {e}"
 
 # ------------------ Sidebar ------------------
 st.sidebar.title("🍕 PizzaBuddy KI")
-if st.sidebar.button("Neues KI-Rezept generieren"):
-    rezept_name = list(rezepte.keys())[0]  # Ausgangsrezept für Vorschlag
-    prompt = f"Schlage mir ein kreatives Pizzarezept vor, ähnlich wie {rezept_name}. Gib die Schritte als JSON-Liste mit 'schritt' und 'dauer_min' an."
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        ki_rezept_text = response['choices'][0]['message']['content']
-        neues_rezept = json.loads(ki_rezept_text)
-        ki_name = f"KI Rezept {len(rezepte)+1}"
-        rezepte[ki_name] = neues_rezept
-        with open(REZEPTE_DATEI, "w") as f:
-            json.dump(rezepte, f, indent=4)
-        st.sidebar.success(f"✅ Neues Rezept '{ki_name}' gespeichert!")
+rezept_name = st.sidebar.selectbox("Rezept wählen", ["Margherita", "Salami", "Veggie", "Neues Rezept generieren"])
 
-        # Bild generieren
-        img_prompt = f"Eine leckere Pizza: {ki_name}, fotorealistisch, auf Holzbrett, italienische Küche"
-        image_resp = openai.Image.create(
-            prompt=img_prompt,
-            n=1,
-            size="512x512"
-        )
-        image_data = base64.b64decode(image_resp['data'][0]['b64_json'])
-        with open(f"{ki_name.replace(' ', '_')}.png", "wb") as f:
-            f.write(image_data)
-    except Exception as e:
-        st.sidebar.error(f"Fehler: {e}")
+# ------------------ Session State ------------------
+if "rezepte" not in st.session_state:
+    st.session_state.rezepte = {
+        "Margherita": ["Teig ausrollen", "Tomatensauce auftragen", "Mozzarella hinzufügen", "Backen bei 220°C für 12 min"],
+        "Salami": ["Teig ausrollen", "Tomatensauce auftragen", "Salami & Käse hinzufügen", "Backen bei 220°C für 12 min"],
+        "Veggie": ["Teig ausrollen", "Tomatensauce auftragen", "Gemüse & Käse hinzufügen", "Backen bei 220°C für 12 min"]
+    }
 
-# ------------------ Hauptbereich ------------------
-st.title("🍕 PizzaBuddy KI: Alle Rezepte")
-
-# Grid anzeigen: 2 Spalten
-cols = st.columns(2)
-for i, (name, steps) in enumerate(rezepte.items()):
-    col = cols[i % 2]
-    with col:
-        st.subheader(name)
-        st.write("Schritte:")
-        for s in steps:
-            st.write(f"- {s['schritt']} ({s['dauer_min']} min)")
-
-        # Bild anzeigen
-        bild_name = f"{name.replace(' ', '_')}.png"
-        if os.path.exists(bild_name):
-            img = Image.open(bild_name)
-            st.image(img, caption=name)
-        else:
-            st.info("📸 Noch kein Bild verfügbar")
+# ------------------ Rezeptanzeige ------------------
+if rezept_name != "Neues Rezept generieren":
+    steps = st.session_state.rezepte[rezept_name]
+    st.subheader(f"{rezept_name} Rezept")
+    for i, step in enumerate(steps, 1):
+        st.write(f"{i}. {step}")
+else:
+    prompt = st.text_area("Beschreibe, welche Art von Pizza du möchtest", "Eine kreative vegetarische Pizza")
+    if st.button("Rezept generieren"):
+        neues_rezept = generiere_rezept(prompt)
+        st.session_state.rezepte["Neues Rezept"] = neues_rezept.split("\n")
+        st.subheader("Generiertes Rezept")
+        for i, step in enumerate(st.session_state.rezepte["Neues Rezept"], 1):
+            st.write(f"{i}. {step}")
