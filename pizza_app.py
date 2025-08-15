@@ -49,26 +49,29 @@ def speichere_feedback(eintrag: dict):
     with open(FEEDBACK_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# ------------------ Sidebar ------------------
+# --------------------- Sidebar ---------------------
 st.sidebar.title("🍕 PizzaBuddy KI")
+
+# Prüfen, ob Rezepte existieren
+if not rezepte:
+    st.sidebar.error("Keine Rezepte gefunden. Bitte prüfe das Dict `rezepte`.")
+    st.stop()  # stoppt die App hier, bevor Fehler auftreten
+
+# Rezept-Auswahl
 rezept_name = st.sidebar.selectbox("Rezept wählen", list(rezepte.keys()))
+
+# Fallback, falls selectbox None liefert
+if rezept_name is None or rezept_name not in rezepte:
+    st.sidebar.error("Ungültiges Rezept ausgewählt. Bitte wähle eines aus der Liste.")
+    st.stop()
+
 steps = rezepte[rezept_name]
 
+# SessionState-Defaults
 if "hydration" not in st.session_state:
     st.session_state.hydration = 0.72 if "72%" in rezept_name else 0.75
 if "step_index" not in st.session_state:
     st.session_state.step_index = 0
-
-anz_baelle = st.sidebar.number_input("Anzahl Teigbällchen", 1, 24, 6)
-gewicht_ball = st.sidebar.number_input("Gewicht pro Bällchen (g)", 180, 320, 250)
-sec_pro_min = st.sidebar.slider("Zeitfaktor (Sek. pro Minute)", 1, 60, 1)
-
-mehl, wasser, salz, hefe = berechne_zutaten(anz_baelle, gewicht_ball, st.session_state.hydration)
-st.sidebar.subheader("Zutaten (geschätzt)")
-st.sidebar.metric("Mehl (g)", mehl)
-st.sidebar.metric("Wasser (g)", wasser)
-st.sidebar.metric("Salz (g)", salz)
-st.sidebar.metric("Hefe (g)", hefe)
 
 # ------------------ Hauptbereich ------------------
 st.title("Interaktiver Pizza-Assistent KI")
