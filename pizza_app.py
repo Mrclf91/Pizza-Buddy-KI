@@ -1,3 +1,12 @@
+import os
+import openai
+
+# OpenAI-Key aus Streamlit Secrets
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+if not openai.api_key:
+    import streamlit as st
+    st.error("❌ OPENAI_API_KEY nicht gefunden. Bitte Secrets prüfen.")
 import streamlit as st
 import time, json, os
 from datetime import datetime, timedelta
