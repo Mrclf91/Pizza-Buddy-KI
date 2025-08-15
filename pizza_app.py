@@ -1,78 +1,92 @@
+# pizza_app.py
 import streamlit as st
-import os, time, json
+import json, os, time
 from datetime import datetime, timedelta
 from PIL import Image
 import openai
 
-# --------------------- Konfiguration ---------------------
+# ------------------ OpenAI Setup ------------------
+# Du hast den API-Key schon bei Streamlit Secrets gespeichert
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Beispiel-Rezepte
-rezepte = {
-    "Basic Margherita": [{"schritt": "Teig kneten", "dauer_min": 10},
-                         {"schritt": "Stockgare", "dauer_min": 60},
-                         {"schritt": "Backen", "dauer_min": 12}],
-    "Pepperoni Special": [{"schritt": "Teig kneten", "dauer_min": 12},
-                          {"schritt": "Stockgare", "dauer_min": 90},
-                          {"schritt": "Backen", "dauer_min": 15}],
-}
+# ------------------ Daten laden ------------------
+REZEPTE_DATEI = "rezepte.json"
 
-# --------------------- Sidebar ---------------------
+if os.path.exists(REZEPTE_DATEI):
+    with open(REZEPTE_DATEI, "r") as f:
+        rezepte = json.load(f)
+else:
+    rezepte = {
+        "Basic Margherita": [
+            {"schritt": "Teig kneten", "dauer_min": 10},
+            {"schritt": "Stockgare", "dauer_min": 60},
+            {"schritt": "Backen", "dauer_min": 12},
+        ]
+    }
+    with open(REZEPTE_DATEI, "w") as f:
+        json.dump(rezepte, f, indent=4)
+
+# ------------------ Sidebar ------------------
 st.sidebar.title("🍕 PizzaBuddy KI")
 rezept_name = st.sidebar.selectbox("Rezept wählen", list(rezepte.keys()))
-st.sidebar.markdown("---")
 
-# KI-Rezept-Vorschlag
 if st.sidebar.button("Neues Rezept vorschlagen"):
-    prompt = f"Schlage mir ein kreatives Pizzarezept vor, ähnlich wie {rezept_name}"
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role":"user","content":prompt}]
-    )
-    st.sidebar.info(response['choices'][0]['message']['content'])
+    prompt = f"Schlage mir ein kreatives Pizzarezept vor, ähnlich wie {rezept_name}. Gib die Schritte als JSON-Liste mit 'schritt' und 'dauer_min' an."
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        ki_rezept_text = response['choices'][0]['message']['content']
 
-# --------------------- Hauptbereich ---------------------
-st.title(f"🍕 PizzaBuddy Dashboard: {rezept_name}")
+        # KI-Antwort in Python-Objekt umwandeln
+        neues_rezept = json.loads(ki_rezept_text)
+        ki_name = f"KI Rezept {len(rezepte)+1}"
+        rezepte[ki_name] = neues_rezept
 
-# --------------------- Schritte ---------------------
-aktueller_schritt_idx = st.session_state.get("schritt_idx", 0)
-aktueller = rezepte[rezept_name][aktueller_schritt_idx]
-st.subheader(f"Schritt {aktueller_schritt_idx+1}: {aktueller['schritt']}")
-st.write(f"Dauer: {aktueller['dauer_min']} Minuten")
+        # Speichern
+        with open(REZEPTE_DATEI, "w") as f:
+            json.dump(rezepte, f, indent=4)
+        st.sidebar.success(f"✅ Neues Rezept '{ki_name}' gespeichert!")
+    except Exception as e:
+        st.sidebar.error(f"Fehler beim Vorschlagen des Rezepts: {e}")
 
-# Timer
-if "timer_end" not in st.session_state:
-    st.session_state.timer_end = None
+# ------------------ Hauptbereich ------------------
+st.title(f"🍕 PizzaBuddy: {rezept_name}")
 
-if st.button("Timer starten"):
-    st.session_state.timer_end = datetime.now() + timedelta(minutes=aktueller["dauer_min"])
-    st.success(f"Timer gestartet! Ende um {st.session_state.timer_end.strftime('%H:%M:%S')}")
+steps = rezepte.get(rezept_name, [])
 
-if st.session_state.timer_end:
-    verbleibend = st.session_state.timer_end - datetime.now()
-    if verbleibend.total_seconds() > 0:
-        st.info(f"Verbleibende Zeit: {str(verbleibend).split('.')[0]}")
-    else:
-        st.balloons()
-        st.success("🎉 Zeit abgelaufen! Nächster Schritt starten.")
-        st.session_state.timer_end = None
+# Timer initialisieren
+if "aktiver_schritt" not in st.session_state:
+    st.session_state.aktiver_schritt = 0
+if "timer_start" not in st.session_state:
+    st.session_state.timer_start = None
 
-# Schritt vor / zurück
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("⬅️ Zurück"):
-        st.session_state.schritt_idx = max(0, aktueller_schritt_idx-1)
-with col2:
-    if st.button("➡️ Weiter"):
-        st.session_state.schritt_idx = min(len(rezepte[rezept_name])-1, aktueller_schritt_idx+1)
+# Schritt anzeigen
+if steps:
+    current = st.session_state.aktiver_schritt
+    st.header(f"Schritt {current+1}/{len(steps)}: {steps[current]['schritt']}")
+    st.write(f"Dauer: {steps[current]['dauer_min']} Minuten")
 
-# --------------------- Bild-Upload ---------------------
-st.subheader("📸 Bild hochladen")
-hochgeladenes_bild = st.file_uploader("Teig oder Pizza hochladen", type=["png","jpg","jpeg"])
-if hochgeladenes_bild:
-    image = Image.open(hochgeladenes_bild)
-    st.image(image, caption="Hochgeladenes Bild", use_column_width=True)
-    os.makedirs("uploads", exist_ok=True)
-    save_path = f"uploads/{hochgeladenes_bild.name}"
-    image.save(save_path)
-    st.success(f"Bild gespeichert unter {save_path}")
+    if st.button("Starte Schritt"):
+        st.session_state.timer_start = datetime.now()
+
+    if st.session_state.timer_start:
+        elapsed = (datetime.now() - st.session_state.timer_start).total_seconds()
+        remaining = steps[current]['dauer_min']*60 - elapsed
+        if remaining > 0:
+            st.progress(1 - remaining/(steps[current]['dauer_min']*60))
+            st.write(f"Verbleibende Zeit: {int(remaining//60)}m {int(remaining%60)}s")
+        else:
+            st.success("✅ Schritt abgeschlossen!")
+            if st.button("Zum nächsten Schritt"):
+                st.session_state.aktiver_schritt += 1
+                st.session_state.timer_start = None
+else:
+    st.write("Keine Schritte gefunden.")
+
+# ------------------ Optional: Pizza-Bild ------------------
+bild_name = f"{rezept_name.replace(' ', '_')}.png"
+if os.path.exists(bild_name):
+    img = Image.open(bild_name)
+    st.image(img, caption=rezept_name)
