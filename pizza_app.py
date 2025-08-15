@@ -1,164 +1,78 @@
-import os
-import openai
-
-# OpenAI-Key aus Streamlit Secrets
-openai.api_key = os.environ.get("OPENAI_API_KEY")
-
-if not openai.api_key:
-    import streamlit as st
-    st.error("❌ OPENAI_API_KEY nicht gefunden. Bitte Secrets prüfen.")
 import streamlit as st
-import time, json, os
+import os, time, json
 from datetime import datetime, timedelta
 from PIL import Image
 import openai
 
-# ------------------ Konfiguration ------------------
-st.set_page_config(page_title="PizzaBuddy KI", page_icon="🍕", layout="wide")
-REZEPTE_FILE = "rezepte.json"
-FEEDBACK_FILE = "pizza_feedback.json"
+# --------------------- Konfiguration ---------------------
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# ------------------ OpenAI Key ------------------
-openai.api_key = st.secrets["OPENAI_API_KEY"] if "OPENAI_API_KEY" in st.secrets else ""
-
-# ------------------ Helper: Rezepte laden ------------------
-def lade_rezepte():
-    if os.path.exists(REZEPTE_FILE):
-        with open(REZEPTE_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-def speichere_rezepte(data):
-    with open(REZEPTE_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-rezepte = lade_rezepte()
-
-# ------------------ Helper: Zutatenrechner ------------------
-def berechne_zutaten(anz_baelle=6, gewicht_pro_ball=250, hydration=0.72, salz_pct=0.028, hefe_pro_kg=2):
-    total = anz_baelle * gewicht_pro_ball
-    hefe_frac = hefe_pro_kg / 1000
-    f = total / (1 + hydration + salz_pct + hefe_frac)
-    w = f * hydration
-    s = f * salz_pct
-    y = f * hefe_frac
-    return round(f), round(w), round(s), round(y)
-
-# ------------------ Helper: Feedback ------------------
-def lade_feedback():
-    if os.path.exists(FEEDBACK_FILE):
-        with open(FEEDBACK_FILE, "r") as f:
-            try: return json.load(f)
-            except: return []
-    return []
-
-def speichere_feedback(eintrag: dict):
-    data = lade_feedback()
-    data.append(eintrag)
-    with open(FEEDBACK_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+# Beispiel-Rezepte
+rezepte = {
+    "Basic Margherita": [{"schritt": "Teig kneten", "dauer_min": 10},
+                         {"schritt": "Stockgare", "dauer_min": 60},
+                         {"schritt": "Backen", "dauer_min": 12}],
+    "Pepperoni Special": [{"schritt": "Teig kneten", "dauer_min": 12},
+                          {"schritt": "Stockgare", "dauer_min": 90},
+                          {"schritt": "Backen", "dauer_min": 15}],
+}
 
 # --------------------- Sidebar ---------------------
 st.sidebar.title("🍕 PizzaBuddy KI")
-
-# Prüfen, ob Rezepte existieren
-if not rezepte:
-    st.sidebar.error("Keine Rezepte gefunden. Bitte prüfe das Dict `rezepte`.")
-    st.stop()  # stoppt die App hier, bevor Fehler auftreten
-
-# Rezept-Auswahl
 rezept_name = st.sidebar.selectbox("Rezept wählen", list(rezepte.keys()))
+st.sidebar.markdown("---")
 
-# Fallback, falls selectbox None liefert
-if rezept_name is None or rezept_name not in rezepte:
-    st.sidebar.error("Ungültiges Rezept ausgewählt. Bitte wähle eines aus der Liste.")
-    st.stop()
+# KI-Rezept-Vorschlag
+if st.sidebar.button("Neues Rezept vorschlagen"):
+    prompt = f"Schlage mir ein kreatives Pizzarezept vor, ähnlich wie {rezept_name}"
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role":"user","content":prompt}]
+    )
+    st.sidebar.info(response['choices'][0]['message']['content'])
 
-steps = rezepte[rezept_name]
+# --------------------- Hauptbereich ---------------------
+st.title(f"🍕 PizzaBuddy Dashboard: {rezept_name}")
 
-# SessionState-Defaults
-if "hydration" not in st.session_state:
-    st.session_state.hydration = 0.72 if "72%" in rezept_name else 0.75
-if "step_index" not in st.session_state:
-    st.session_state.step_index = 0
+# --------------------- Schritte ---------------------
+aktueller_schritt_idx = st.session_state.get("schritt_idx", 0)
+aktueller = rezepte[rezept_name][aktueller_schritt_idx]
+st.subheader(f"Schritt {aktueller_schritt_idx+1}: {aktueller['schritt']}")
+st.write(f"Dauer: {aktueller['dauer_min']} Minuten")
 
-# ------------------ Hauptbereich ------------------
-st.title("Interaktiver Pizza-Assistent KI")
-col1, col2, col3 = st.columns([2,1,1])
-aktueller = steps[st.session_state.step_index]
-with col1:
-    st.subheader(f"Schritt {st.session_state.step_index+1} / {len(steps)}")
-    st.write(f"**{aktueller['schritt']}** – Dauer: {aktueller['dauer_min']} min")
-with col2:
-    if st.button("◀️ Zurück", disabled=st.session_state.step_index==0):
-        st.session_state.step_index -= 1
-        st.experimental_rerun()
-with col3:
-    if st.button("Weiter ▶️", disabled=st.session_state.step_index==len(steps)-1):
-        st.session_state.step_index += 1
-        st.experimental_rerun()
+# Timer
+if "timer_end" not in st.session_state:
+    st.session_state.timer_end = None
 
-# ------------------ Timer ------------------
-kurz_timer = st.button("⏱️ Kurz-Timer starten (Demo)")
-if kurz_timer:
-    dauer = aktueller["dauer_min"]
-    max_block = 600
-    blockzeit = dauer * sec_pro_min
-    if blockzeit <= max_block:
-        prog = st.progress(0)
-        for i in range(dauer):
-            time.sleep(sec_pro_min)
-            prog.progress(int(((i+1)/dauer)*100))
-        st.success("Schritt abgeschlossen!")
+if st.button("Timer starten"):
+    st.session_state.timer_end = datetime.now() + timedelta(minutes=aktueller["dauer_min"])
+    st.success(f"Timer gestartet! Ende um {st.session_state.timer_end.strftime('%H:%M:%S')}")
+
+if st.session_state.timer_end:
+    verbleibend = st.session_state.timer_end - datetime.now()
+    if verbleibend.total_seconds() > 0:
+        st.info(f"Verbleibende Zeit: {str(verbleibend).split('.')[0]}")
     else:
-        fz = datetime.now() + timedelta(seconds=blockzeit)
-        st.info(f"Langer Schritt – Ende: **{fz.strftime('%H:%M')}**")
+        st.balloons()
+        st.success("🎉 Zeit abgelaufen! Nächster Schritt starten.")
+        st.session_state.timer_end = None
 
-# ------------------ Feedback ------------------
-if aktueller.get("feedback", True):
-    st.subheader("Feedback & Tipps")
-    fb = st.radio("Wie ist der Teig jetzt?", ["ok","weich","straff","zu klebrig"], index=0, horizontal=True)
-    if st.button("Feedback speichern & Tipp anzeigen"):
-        eintrag = {"zeit": datetime.now().isoformat(timespec="seconds"),
-                   "rezept": rezept_name, "schritt": aktueller["schritt"], "feedback": fb,
-                   "baelle": int(anz_baelle), "gewicht_pro_ball": int(gewicht_ball),
-                   "hydration": st.session_state.hydration}
-        speichere_feedback(eintrag)
-        st.success("Feedback gespeichert ✅")
-        if fb=="weich": st.info("💡 Knete länger oder reduziere Wasser")
-        if fb=="straff": st.info("💡 Teig entspannen lassen")
-        if fb=="zu klebrig": st.info("💡 Mehl sanft einarbeiten")
+# Schritt vor / zurück
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("⬅️ Zurück"):
+        st.session_state.schritt_idx = max(0, aktueller_schritt_idx-1)
+with col2:
+    if st.button("➡️ Weiter"):
+        st.session_state.schritt_idx = min(len(rezepte[rezept_name])-1, aktueller_schritt_idx+1)
 
-# ------------------ Foto-Upload ------------------
-st.subheader("🍕 Foto hochladen (optional)")
-uploaded_file = st.file_uploader("Bild vom Teig oder Pizza", type=["png","jpg","jpeg"])
-if uploaded_file:
-    image = Image.open(uploaded_file)
+# --------------------- Bild-Upload ---------------------
+st.subheader("📸 Bild hochladen")
+hochgeladenes_bild = st.file_uploader("Teig oder Pizza hochladen", type=["png","jpg","jpeg"])
+if hochgeladenes_bild:
+    image = Image.open(hochgeladenes_bild)
     st.image(image, caption="Hochgeladenes Bild", use_column_width=True)
-
-# ------------------ KI-Rezeptvorschlag ------------------
-st.subheader("🍕 Neues Rezept generieren")
-stil = st.selectbox("Stil wählen", ["Neapolitanisch", "New York", "Sauerteig"])
-mehl_neu = st.number_input("Mehl für neues Rezept (g)", 400, 2000, 500, key="neu_mehl")
-hydration_neu = st.number_input("Hydration (%)", 60, 80, 72, key="neu_hydration")
-
-if st.button("Neues Rezept generieren"):
-    prompt = f"Erstelle ein Pizza-Rezept im Stil {stil} mit {mehl_neu}g Mehl und {hydration_neu}% Hydration. Gib die Schritte als Liste aus."
-    try:
-        response = openai.ChatCompletion.create(model="gpt-5-mini",
-                                                messages=[{"role":"user","content":prompt}])
-        neues_rezept = response.choices[0].message.content.split("\n")
-        name = f"Neu: {stil} {datetime.now().strftime('%H:%M')}"
-        rezepte[name] = [{"schritt": s, "dauer_min": 5, "feedback": True} for s in neues_rezept if s]
-        speichere_rezepte(rezepte)
-        st.success("Neues Rezept generiert & gespeichert ✅")
-        st.write(neues_rezept)
-    except Exception as e:
-        st.error(f"Fehler: {e}")
-
-# ------------------ Verlauf / Export ------------------
-st.subheader("Verlauf & Export")
-verlauf = lade_feedback()
-if verlauf:
-    st.table(verlauf[-5:])
-    st.download_button("⬇️ Feedback als JSON", data=json.dumps(verlauf, indent=2), file_name="feedback.json")
+    os.makedirs("uploads", exist_ok=True)
+    save_path = f"uploads/{hochgeladenes_bild.name}"
+    image.save(save_path)
+    st.success(f"Bild gespeichert unter {save_path}")
